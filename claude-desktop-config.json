@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "kodi": {
+      "command": "/path/to/kodi-mcp-server/venv/bin/python",
+      "args": ["/path/to/kodi-mcp-server/src/server.py"],
+      "env": {
+        "KODI_HOST": "192.168.1.71",
+        "KODI_PORT": "8080",
+        "KODI_USERNAME": "kodi",
+        "KODI_PASSWORD": "kodi",
+        "KODI_TIMEOUT": "30",
+        "USE_HTTPS": "false",
+        "SOCKS5_HOST": "",
+        "SOCKS5_PORT": "1080",
+        "SOCKS5_USERNAME": "",
+        "SOCKS5_PASSWORD": ""
+      }
+    }
+  }
+}
