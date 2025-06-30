@@ -39,15 +39,15 @@ async def test_kodi_connection(
     }
     
     try:
-        proxies = None
+        proxy = None
         if socks5_proxy:
-            proxies = {"all://": socks5_proxy}
+            proxy = socks5_proxy
         
         print(f"Testing connection to Kodi at {base_url}")
-        if proxies:
+        if proxy:
             print(f"Using SOCKS5 proxy: {socks5_proxy}")
         
-        async with httpx.AsyncClient(timeout=timeout, proxies=proxies) as client:
+        async with httpx.AsyncClient(timeout=timeout, proxy=proxy) as client:
             response = await client.post(
                 base_url,
                 json=payload,

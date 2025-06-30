@@ -24,7 +24,9 @@ from mcp.types import (
     TextContent,
     ImageContent,
     EmbeddedResource,
-    LoggingLevel
+    LoggingLevel,
+    ServerCapabilities,
+    ToolsCapability
 )
 from pydantic import BaseModel, Field
 
@@ -119,12 +121,12 @@ class KodiAPI:
             payload["params"] = params
         
         try:
-            # Determine proxy settings
-            proxies = None
+            # Determine proxy settings for httpx 0.28+
+            proxy = None
             if use_socks5 and self.proxy_url:
-                proxies = {"all://": self.proxy_url}
+                proxy = self.proxy_url
             
-            async with httpx.AsyncClient(timeout=self.timeout, proxies=proxies) as client:
+            async with httpx.AsyncClient(timeout=self.timeout, proxy=proxy) as client:
                 response = await client.post(
                     self.base_url,
                     json=payload,
@@ -836,10 +838,9 @@ async def main():
             InitializationOptions(
                 server_name="kodi-mcp-server",
                 server_version="1.0.0",
-                capabilities=server.get_capabilities(
-                    notification_options=None,
-                    experimental_capabilities=None,
-                ),
+                capabilities=ServerCapabilities(
+                    tools=ToolsCapability(listChanged=True)
+                )
             ),
         )
 

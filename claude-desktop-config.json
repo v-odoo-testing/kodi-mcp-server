@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "kodi": {
-      "command": "/path/to/kodi-mcp-server/venv/bin/python",
-      "args": ["/path/to/kodi-mcp-server/src/server.py"],
+      "command": "/Users/dgoo2308/git/kodi-mcp-server/venv/bin/python",
+      "args": ["/Users/dgoo2308/git/kodi-mcp-server/src/server.py"],
       "env": {
         "KODI_HOST": "192.168.1.71",
         "KODI_PORT": "8080",
