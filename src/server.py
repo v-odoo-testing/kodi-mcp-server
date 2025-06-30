@@ -1061,6 +1061,87 @@ async def control_playback_tool(arguments: Dict[str, Any]) -> List[TextContent]:
         return [TextContent(type="text", text=f"Error controlling playback: {str(e)}")]
 
 
+async def scan_tv_show_tool(arguments: Dict[str, Any]) -> List[TextContent]:
+    """Scan a specific TV show directory for new episodes."""
+    show_title = arguments.get("show_title", "").strip()
+    use_socks5 = arguments.get("use_socks5", False)
+    
+    if not show_title:
+        return [TextContent(type="text", text="Error: TV show title is required.")]
+    
+    try:
+        scanned_directory = await kodi.scan_tv_show_directory(show_title, use_socks5=use_socks5)
+        
+        if scanned_directory:
+            result_text = f"✅ Started scanning **{show_title}** directory:\n`{scanned_directory}`\n\nThis will scan only the specific show folder, not the entire library."
+        else:
+            result_text = f"❌ Could not find TV show '{show_title}' in library or unable to determine directory path."
+        
+        return [TextContent(type="text", text=result_text)]
+        
+    except Exception as e:
+        return [TextContent(type="text", text=f"Error scanning TV show directory: {str(e)}")]
+
+
+async def get_episode_details_tool(arguments: Dict[str, Any]) -> List[TextContent]:
+    """Get detailed information about a specific episode."""
+    show_title = arguments.get("show_title", "").strip()
+    season = arguments.get("season")
+    episode = arguments.get("episode")
+    use_socks5 = arguments.get("use_socks5", False)
+    
+    if not show_title or season is None or episode is None:
+        return [TextContent(type="text", text="Error: Show title, season, and episode are required.")]
+    
+    try:
+        # First find the TV show
+        tv_shows = await kodi.get_tv_shows(use_socks5=use_socks5)
+        
+        matching_show = None
+        for show in tv_shows:
+            if fuzzy_match(show_title, show.title):
+                matching_show = show
+                break
+        
+        if not matching_show:
+            return [TextContent(type="text", text=f"TV show '{show_title}' not found in library.")]
+        
+        # Get all episodes for the show
+        episodes = await kodi.get_episodes(matching_show.tvshowid, use_socks5=use_socks5)
+        
+        # Find the specific episode
+        target_episode = None
+        for ep in episodes:
+            if ep.season == season and ep.episode == episode:
+                target_episode = ep
+                break
+        
+        if not target_episode:
+            return [TextContent(
+                type="text",
+                text=f"Episode S{season:02d}E{episode:02d} of '{matching_show.title}' not found in library."
+            )]
+        
+        # Get detailed episode information
+        episode_details = await kodi.get_episode_details(target_episode.episodeid, use_socks5=use_socks5)
+        
+        result_text = f"📺 **{matching_show.title}** S{season:02d}E{episode:02d}\n\n"
+        result_text += f"**Title:** {episode_details.get('title', 'Unknown')}\n"
+        result_text += f"**File Path:** `{episode_details.get('file', 'Unknown')}`\n"
+        result_text += f"**Rating:** {episode_details.get('rating', 0)}/10\n"
+        
+        if episode_details.get('plot'):
+            plot = episode_details['plot'][:200] + "..." if len(episode_details['plot']) > 200 else episode_details['plot']
+            result_text += f"**Plot:** {plot}\n"
+        
+        result_text += f"**Episode ID:** {target_episode.episodeid} (for direct playback)\n"
+        
+        return [TextContent(type="text", text=result_text)]
+        
+    except Exception as e:
+        return [TextContent(type="text", text=f"Error getting episode details: {str(e)}")]
+
+
 async def main():
     """Main entry point for the server."""
     async with stdio_server() as (read_stream, write_stream):
@@ -1069,7 +1150,7 @@ async def main():
             write_stream,
             InitializationOptions(
                 server_name="kodi-mcp-server",
-                server_version="1.0.0",
+                server_version="1.1.1",
                 capabilities=ServerCapabilities(
                     tools=ToolsCapability(listChanged=True)
                 )
@@ -1080,3 +1161,5 @@ async def main():
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
+
+
