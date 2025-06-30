@@ -66,3 +66,26 @@ All notable changes to this project will be documented in this file.
 ### Bug Fixes
 - Fixed issue where library scanning would scan entire collection
 - Improved episode playback error reporting for troubleshooting
+
+
+## [1.2.0] - 2025-06-30
+
+### Added
+- `play_next_unwatched` tool - Automatically finds and plays the next unwatched episode
+- Watch status tracking via Kodi's playcount and lastplayed data
+- `get_episodes_with_watch_status` API method for episode watch data
+- Comprehensive test suite for all new functionality
+
+### Enhanced
+- Server version bumped to 1.2.0
+- Complete workflow: scan specific show directory + play next unwatched episode
+- Detailed previous watch status reporting
+
+### Fixed
+- Syntax errors in tool definitions
+- Proper function placement to ensure all tools load correctly
+
+### Development
+- Organized test files into `tests/` directory
+- Added test documentation and usage instructions
+- Direct MCP server testing capabilities for development
