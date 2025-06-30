@@ -36,3 +36,15 @@ All notable changes to this project will be documented in this file.
 ### Features Added
 - Setup script (`setup.sh`) for automated installation and configuration
 - Python version validation and virtual environment setup
+
+
+### Bug Fixes
+- Fixed httpx proxy parameter for v0.28+ compatibility (proxies -> proxy)
+- Added httpx[socks] dependency for proper SOCKS5 support
+- Fixed MCP server initialization with correct ServerCapabilities
+- Updated Claude Desktop configuration with absolute paths
+
+### Testing
+- Verified connection to Kodi at 192.168.1.71 (2083 movies found)
+- MCP server starts without errors
+- Virtual environment recreated with Python 3.11
