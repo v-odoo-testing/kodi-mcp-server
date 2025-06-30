@@ -237,6 +237,61 @@ class KodiAPI:
         await self._make_request("Player.Stop", params, use_socks5)
         return True
     
+    async def get_tv_show_details(self, tvshow_id: int, use_socks5: bool = False) -> Dict[str, Any]:
+        """Get detailed information about a TV show including file paths."""
+        properties = ["title", "year", "genre", "rating", "plot", "episode", "season", "file", "art"]
+        
+        params = {
+            "tvshowid": tvshow_id,
+            "properties": properties
+        }
+        
+        result = await self._make_request("VideoLibrary.GetTVShowDetails", params, use_socks5)
+        return result.get("tvshowdetails", {})
+    
+    async def get_episode_details(self, episode_id: int, use_socks5: bool = False) -> Dict[str, Any]:
+        """Get detailed information about an episode including file path."""
+        properties = ["title", "season", "episode", "file", "tvshowid", "showtitle", "plot", "rating", "art"]
+        
+        params = {
+            "episodeid": episode_id,
+            "properties": properties
+        }
+        
+        result = await self._make_request("VideoLibrary.GetEpisodeDetails", params, use_socks5)
+        return result.get("episodedetails", {})
+    
+    async def scan_tv_show_directory(self, show_title: str, use_socks5: bool = False) -> Optional[str]:
+        """Find and scan a specific TV show's directory."""
+        # First, find the TV show
+        tv_shows = await self.get_tv_shows(use_socks5=use_socks5)
+        
+        matching_show = None
+        for show in tv_shows:
+            if show_title.lower() in show.title.lower() or show.title.lower() in show_title.lower():
+                matching_show = show
+                break
+        
+        if not matching_show:
+            return None
+        
+        # Get episodes to find the file path
+        episodes = await self.get_episodes(matching_show.tvshowid, use_socks5=use_socks5)
+        
+        if not episodes or not episodes[0].file:
+            return None
+        
+        # Extract directory path from episode file path
+        import os
+        episode_file = episodes[0].file
+        # Go up two levels: episode file -> season folder -> show folder
+        show_directory = os.path.dirname(os.path.dirname(episode_file))
+        
+        # Trigger scan for this specific directory
+        await self.scan_library(show_directory, use_socks5=use_socks5)
+        
+        return show_directory
+    
     async def scan_library(self, directory: Optional[str] = None, use_socks5: bool = False) -> bool:
         """Trigger a library scan."""
         params = {}
@@ -394,6 +449,32 @@ async def handle_list_tools() -> List[Tool]:
             }
         ),
         Tool(
+            name="scan_tv_show",
+            description="Scan a specific TV show directory for new episodes",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "show_title": {"type": "string", "description": "TV show title to find and scan"},
+                    "use_socks5": {"type": "boolean", "description": "Use SOCKS5 proxy for this request (default: false)", "default": False}
+                },
+                "required": ["show_title"]
+            }
+        ),
+        Tool(
+            name="get_episode_details",
+            description="Get detailed information about a specific episode including file path",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "show_title": {"type": "string", "description": "TV show title"},
+                    "season": {"type": "integer", "description": "Season number"},
+                    "episode": {"type": "integer", "description": "Episode number"},
+                    "use_socks5": {"type": "boolean", "description": "Use SOCKS5 proxy for this request (default: false)", "default": False}
+                },
+                "required": ["show_title", "season", "episode"]
+            }
+        ),
+        Tool(
             name="update_library",
             description="Trigger Kodi library scan for new content",
             inputSchema={
@@ -458,6 +539,10 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[TextCon
             return await get_recently_added_tool(arguments)
         elif name == "update_library":
             return await update_library_tool(arguments)
+        elif name == "scan_tv_show":
+            return await scan_tv_show_tool(arguments)
+        elif name == "get_episode_details":
+            return await get_episode_details_tool(arguments)
         else:
             raise ValueError(f"Unknown tool: {name}")
             
@@ -929,13 +1014,34 @@ async def play_episode_tool(arguments: Dict[str, Any]) -> List[TextContent]:
             text=f"Episode S{season:02d}E{episode:02d} of '{matching_show.title}' not found in library."
         )]
     
-    # Play the episode
+    # Get detailed episode info for better debugging
     try:
+        episode_details = await kodi.get_episode_details(target_episode.episodeid, use_socks5=use_socks5)
+        file_path = episode_details.get('file', 'Unknown')
+        
+        # Play the episode
         await kodi.play_episode(target_episode.episodeid, use_socks5=use_socks5)
-        result_text = f"📺 Started playing **{matching_show.title}** S{season:02d}E{episode:02d}: {target_episode.title}"
+        
+        result_text = f"🎬 Started playing **{matching_show.title}** S{season:02d}E{episode:02d}\n"
+        result_text += f"**Episode:** {target_episode.title}\n"
+        result_text += f"**File:** `{file_path}`\n"
+        result_text += f"**Episode ID:** {target_episode.episodeid}"
+        
         return [TextContent(type="text", text=result_text)]
+        
     except Exception as e:
-        return [TextContent(type="text", text=f"Error starting playback: {str(e)}")]
+        # Provide detailed error information
+        error_text = f"❌ Error playing episode:\n"
+        error_text += f"**Show:** {matching_show.title}\n"
+        error_text += f"**Episode:** S{season:02d}E{episode:02d} - {target_episode.title}\n"
+        error_text += f"**Episode ID:** {target_episode.episodeid}\n"
+        error_text += f"**Error:** {str(e)}\n\n"
+        error_text += "**Troubleshooting:**\n"
+        error_text += "- Check if the file exists and is accessible\n"
+        error_text += "- Verify Kodi player permissions\n"
+        error_text += "- Try playing directly in Kodi interface first"
+        
+        return [TextContent(type="text", text=error_text)]
 
 
 async def control_playback_tool(arguments: Dict[str, Any]) -> List[TextContent]:
@@ -973,4 +1079,86 @@ async def control_playback_tool(arguments: Dict[str, Any]) -> List[TextContent]:
     
     except Exception as e:
         return [TextContent(type="text", text=f"Error controlling playback: {str(e)}")]
+
+
+
+async def scan_tv_show_tool(arguments: Dict[str, Any]) -> List[TextContent]:
+    """Scan a specific TV show directory for new episodes."""
+    show_title = arguments.get("show_title", "").strip()
+    use_socks5 = arguments.get("use_socks5", False)
+    
+    if not show_title:
+        return [TextContent(type="text", text="Error: TV show title is required.")]
+    
+    try:
+        scanned_directory = await kodi.scan_tv_show_directory(show_title, use_socks5=use_socks5)
+        
+        if scanned_directory:
+            result_text = f"✅ Started scanning **{show_title}** directory:\n`{scanned_directory}`\n\nThis will scan only the specific show folder, not the entire library."
+        else:
+            result_text = f"❌ Could not find TV show '{show_title}' in library or unable to determine directory path."
+        
+        return [TextContent(type="text", text=result_text)]
+        
+    except Exception as e:
+        return [TextContent(type="text", text=f"Error scanning TV show directory: {str(e)}")]
+
+
+async def get_episode_details_tool(arguments: Dict[str, Any]) -> List[TextContent]:
+    """Get detailed information about a specific episode."""
+    show_title = arguments.get("show_title", "").strip()
+    season = arguments.get("season")
+    episode = arguments.get("episode")
+    use_socks5 = arguments.get("use_socks5", False)
+    
+    if not show_title or season is None or episode is None:
+        return [TextContent(type="text", text="Error: Show title, season, and episode are required.")]
+    
+    try:
+        # First find the TV show
+        tv_shows = await kodi.get_tv_shows(use_socks5=use_socks5)
+        
+        matching_show = None
+        for show in tv_shows:
+            if fuzzy_match(show_title, show.title):
+                matching_show = show
+                break
+        
+        if not matching_show:
+            return [TextContent(type="text", text=f"TV show '{show_title}' not found in library.")]
+        
+        # Get all episodes for the show
+        episodes = await kodi.get_episodes(matching_show.tvshowid, use_socks5=use_socks5)
+        
+        # Find the specific episode
+        target_episode = None
+        for ep in episodes:
+            if ep.season == season and ep.episode == episode:
+                target_episode = ep
+                break
+        
+        if not target_episode:
+            return [TextContent(
+                type="text",
+                text=f"Episode S{season:02d}E{episode:02d} of '{matching_show.title}' not found in library."
+            )]
+        
+        # Get detailed episode information
+        episode_details = await kodi.get_episode_details(target_episode.episodeid, use_socks5=use_socks5)
+        
+        result_text = f"📺 **{matching_show.title}** S{season:02d}E{episode:02d}\n\n"
+        result_text += f"**Title:** {episode_details.get('title', 'Unknown')}\n"
+        result_text += f"**File Path:** `{episode_details.get('file', 'Unknown')}`\n"
+        result_text += f"**Rating:** {episode_details.get('rating', 0)}/10\n"
+        
+        if episode_details.get('plot'):
+            plot = episode_details['plot'][:200] + "..." if len(episode_details['plot']) > 200 else episode_details['plot']
+            result_text += f"**Plot:** {plot}\n"
+        
+        result_text += f"**Episode ID:** {target_episode.episodeid} (for direct playback)\n"
+        
+        return [TextContent(type="text", text=result_text)]
+        
+    except Exception as e:
+        return [TextContent(type="text", text=f"Error getting episode details: {str(e)}")]
 
