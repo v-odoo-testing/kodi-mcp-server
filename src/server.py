@@ -184,6 +184,24 @@ class KodiAPI:
         
         return [KodiTVShow(**show) for show in tvshows]
     
+    async def get_episodes_with_watch_status(self, tvshow_id: int, season: Optional[int] = None, use_socks5: bool = False) -> List[Dict[str, Any]]:
+        """Get episodes with watch status (playcount and lastplayed)."""
+        properties = ["title", "season", "episode", "file", "tvshowid", "showtitle", "plot", "rating", "playcount", "lastplayed"]
+        
+        params = {
+            "tvshowid": tvshow_id,
+            "properties": properties,
+            "sort": {"order": "ascending", "method": "episode"}
+        }
+        
+        if season is not None:
+            params["season"] = season
+        
+        result = await self._make_request("VideoLibrary.GetEpisodes", params, use_socks5)
+        episodes = result.get("episodes", [])
+        
+        return episodes
+    
     async def get_episodes(self, tvshow_id: int, season: Optional[int] = None, use_socks5: bool = False) -> List[KodiEpisode]:
         """Get episodes for a TV show."""
         properties = ["title", "season", "episode", "file", "tvshowid", "showtitle", "plot", "rating"]
@@ -461,6 +479,18 @@ async def handle_list_tools() -> List[Tool]:
             }
         ),
         Tool(
+            name="play_next_unwatched",
+            description="Find and play the next unwatched episode of a TV show",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "show_title": {"type": "string", "description": "TV show title"},
+                    "use_socks5": {"type": "boolean", "description": "Use SOCKS5 proxy for this request (default: false)", "default": False}
+                },
+                "required": ["show_title"]
+            }
+        ),
+        Tool(
             name="get_episode_details",
             description="Get detailed information about a specific episode including file path",
             inputSchema={
@@ -539,6 +569,8 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[TextCon
             return await get_recently_added_tool(arguments)
         elif name == "update_library":
             return await update_library_tool(arguments)
+        elif name == "play_next_unwatched":
+            return await play_next_unwatched_tool(arguments)
         elif name == "scan_tv_show":
             return await scan_tv_show_tool(arguments)
         elif name == "get_episode_details":
@@ -1061,6 +1093,86 @@ async def control_playback_tool(arguments: Dict[str, Any]) -> List[TextContent]:
         return [TextContent(type="text", text=f"Error controlling playback: {str(e)}")]
 
 
+async def play_next_unwatched_tool(arguments: Dict[str, Any]) -> List[TextContent]:
+    """Find and play the next unwatched episode of a TV show."""
+    show_title = arguments.get("show_title", "").strip()
+    use_socks5 = arguments.get("use_socks5", False)
+    
+    if not show_title:
+        return [TextContent(type="text", text="Error: TV show title is required.")]
+    
+    try:
+        # First find the TV show
+        tv_shows = await kodi.get_tv_shows(use_socks5=use_socks5)
+        
+        matching_show = None
+        for show in tv_shows:
+            if fuzzy_match(show_title, show.title):
+                matching_show = show
+                break
+        
+        if not matching_show:
+            return [TextContent(type="text", text=f"TV show '{show_title}' not found in library.")]
+        
+        # Get all episodes with watch status
+        episodes = await kodi.get_episodes_with_watch_status(matching_show.tvshowid, use_socks5=use_socks5)
+        
+        if not episodes:
+            return [TextContent(type="text", text=f"No episodes found for '{matching_show.title}'.")]
+        
+        # Find the next unwatched episode
+        next_unwatched = None
+        last_watched = None
+        
+        for episode in sorted(episodes, key=lambda x: (x.get('season', 0), x.get('episode', 0))):
+            playcount = episode.get('playcount', 0)
+            
+            if playcount > 0:
+                last_watched = episode
+            else:
+                # This is an unwatched episode
+                if next_unwatched is None:
+                    next_unwatched = episode
+                break
+        
+        if next_unwatched is None:
+            if last_watched:
+                return [TextContent(
+                    type="text", 
+                    text=f"🎬 All episodes of **{matching_show.title}** have been watched!\n\n"
+                         f"**Last watched:** S{last_watched.get('season', 0):02d}E{last_watched.get('episode', 0):02d} - {last_watched.get('title', 'Unknown')}"
+                )]
+            else:
+                return [TextContent(type="text", text=f"No episode watch data available for '{matching_show.title}'.")]
+        
+        # Play the next unwatched episode
+        episode_id = next_unwatched['episodeid']
+        season = next_unwatched.get('season', 0)
+        episode_num = next_unwatched.get('episode', 0)
+        episode_title = next_unwatched.get('title', 'Unknown')
+        
+        try:
+            await kodi.play_episode(episode_id, use_socks5=use_socks5)
+            
+            result_text = f"🎬 Playing next unwatched episode of **{matching_show.title}**:\n\n"
+            result_text += f"**S{season:02d}E{episode_num:02d}:** {episode_title}\n"
+            result_text += f"**File:** `{next_unwatched.get('file', 'Unknown')}`\n"
+            
+            if last_watched:
+                result_text += f"\n**Previously watched:** S{last_watched.get('season', 0):02d}E{last_watched.get('episode', 0):02d} - {last_watched.get('title', 'Unknown')}"
+            
+            return [TextContent(type="text", text=result_text)]
+            
+        except Exception as e:
+            error_text = f"❌ Found next unwatched episode but failed to play:\n"
+            error_text += f"**Episode:** S{season:02d}E{episode_num:02d} - {episode_title}\n"
+            error_text += f"**Error:** {str(e)}"
+            return [TextContent(type="text", text=error_text)]
+        
+    except Exception as e:
+        return [TextContent(type="text", text=f"Error finding next unwatched episode: {str(e)}")]
+
+
 async def scan_tv_show_tool(arguments: Dict[str, Any]) -> List[TextContent]:
     """Scan a specific TV show directory for new episodes."""
     show_title = arguments.get("show_title", "").strip()
@@ -1150,7 +1262,7 @@ async def main():
             write_stream,
             InitializationOptions(
                 server_name="kodi-mcp-server",
-                server_version="1.1.1",
+                server_version="1.2.0",
                 capabilities=ServerCapabilities(
                     tools=ToolsCapability(listChanged=True)
                 )
