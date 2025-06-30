@@ -32,3 +32,7 @@ All notable changes to this project will be documented in this file.
 ### Development Milestones
 - Project setup and repository created at https://github.com/v-odoo-testing/kodi-mcp-server
 - Initial commit with complete feature set and documentation
+
+### Features Added
+- Setup script (`setup.sh`) for automated installation and configuration
+- Python version validation and virtual environment setup
