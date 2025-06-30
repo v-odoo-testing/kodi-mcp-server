@@ -28,3 +28,7 @@ All notable changes to this project will be documented in this file.
 - Claude Desktop integration configuration
 - Complete documentation with usage examples
 - All tools support optional `use_socks5` parameter for proxy usage
+
+### Development Milestones
+- Project setup and repository created at https://github.com/v-odoo-testing/kodi-mcp-server
+- Initial commit with complete feature set and documentation
