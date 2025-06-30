@@ -48,3 +48,21 @@ All notable changes to this project will be documented in this file.
 - Verified connection to Kodi at 192.168.1.71 (2083 movies found)
 - MCP server starts without errors
 - Virtual environment recreated with Python 3.11
+
+
+## [1.1.0] - 2025-06-30
+
+### Added
+- `scan_tv_show` tool - Scan specific TV show directories instead of entire library
+- `get_episode_details` tool - Get detailed episode information including file paths
+- Enhanced episode playback debugging with file paths and episode IDs
+- Improved error handling with troubleshooting suggestions
+
+### Enhanced
+- `play_episode` tool now provides detailed error information and file paths
+- Better directory scanning that finds show folders automatically
+- Targeted scanning reduces scan time from hours to minutes
+
+### Bug Fixes
+- Fixed issue where library scanning would scan entire collection
+- Improved episode playback error reporting for troubleshooting
